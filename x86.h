@@ -1,3 +1,6 @@
+#ifndef _X86_H_
+#define _X86_h_
+
 // Routines to let C code use special x86 instructions.
 
 static inline uchar
@@ -108,13 +111,13 @@ loadgs(ushort v)
 static inline void
 cli(void)
 {
-  asm volatile("cli");
+  asm volatile("cli");  // clear interrupt flag
 }
 
 static inline void
 sti(void)
 {
-  asm volatile("sti");
+  asm volatile("sti");  // set interrupt flag
 }
 
 static inline uint
@@ -181,3 +184,5 @@ struct trapframe {
   ushort ss;
   ushort padding6;
 };
+
+#endif

@@ -1,3 +1,6 @@
+#ifndef _TRAPS_H_
+#define _TRAPS_H_
+
 // x86 trap and interrupt constants.
 
 // Processor-defined:
@@ -9,8 +12,7 @@
 #define T_BOUND          5      // bounds check
 #define T_ILLOP          6      // illegal opcode
 #define T_DEVICE         7      // device not available
-#define T_DBLFLT         8      // double fault
-// #define T_COPROC      9      // reserved (not used since 486)
+#define T_DBLFLT         8      // double fault #define T_COPROC      9      // reserved (not used since 486)
 #define T_TSS           10      // invalid task switch segment
 #define T_SEGNP         11      // segment not present
 #define T_STACK         12      // stack exception
@@ -36,3 +38,4 @@
 #define IRQ_ERROR       19
 #define IRQ_SPURIOUS    31
 
+#endif

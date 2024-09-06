@@ -4,6 +4,7 @@
 // user code, and calls into file.c and fs.c.
 //
 
+#include "pstat.h"
 #include "types.h"
 #include "defs.h"
 #include "param.h"
@@ -66,12 +67,15 @@ sys_dup(void)
   return fd;
 }
 
+static int read_count = 0;
+
 int
 sys_read(void)
 {
   struct file *f;
   int n;
   char *p;
+  ++read_count;
 
   if(argfd(0, 0, &f) < 0 || argint(2, &n) < 0 || argptr(1, &p, n) < 0)
     return -1;
@@ -440,5 +444,49 @@ sys_pipe(void)
   }
   fd[0] = fd0;
   fd[1] = fd1;
+  return 0;
+}
+
+int
+sys_getreadscount(void)
+{ 
+  return read_count;
+}
+
+extern struct ptable_t ptable;
+
+int 
+sys_setticketscount(void) 
+{
+  int t_count;
+  if (argint(0, &t_count) < 0 || t_count < 1) 
+    return -1;
+
+  const int pid = myproc()->pid;
+
+  acquire(&ptable.lock);
+
+  const int old_count = ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)];
+  ptable.ticket_count += t_count - old_count;
+  ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)] = t_count;
+
+  release(&ptable.lock);
+
+  return 0;
+}
+
+int
+sys_getpinfo(void) 
+{
+  struct pstat *stats;
+
+  if (argptr(0, (void*)&stats, sizeof(*stats)) < 0) {
+    return -1;
+  }
+
+  acquire(&ptable.lock);
+  memmove(stats, &ptable.pstats, sizeof(ptable.pstats));
+  release(&ptable.lock);
+
   return 0;
 }

@@ -1,3 +1,13 @@
+#ifndef _PROC_H_
+#define _PROC_H_
+
+#include "types.h"
+#include "param.h"
+#include "mmu.h"
+
+#include "pstat.h"
+#include "spinlock.h"
+
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -51,8 +61,19 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
+#define PSTATS_INDEX_FROM_PID(pid) (((pid) - 1) % NPROC)
+
+struct ptable_t {
+  struct spinlock lock;
+  struct proc proc[NPROC];
+  struct pstat pstats;
+  int ticket_count;
+};
+
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+#endif

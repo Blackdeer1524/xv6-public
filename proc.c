@@ -6,11 +6,12 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h"
 
-struct {
-  struct spinlock lock;
-  struct proc proc[NPROC];
-} ptable;
+#define DEFAULT_TICKETS 4;
+#define ABS(x) ((x) >= 0 ? (x) : -(x))
+
+struct ptable_t ptable;
 
 static struct proc *initproc;
 
@@ -24,6 +25,8 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  memset(&ptable.pstats, 0, sizeof(ptable.pstats));
+  ptable.ticket_count = 0;
 }
 
 // Must be called with interrupts disabled
@@ -75,27 +78,42 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
+  int pid;
 
   acquire(&ptable.lock);
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == UNUSED)
+    if(p->state == UNUSED) {
       goto found;
+    }
 
   release(&ptable.lock);
   return 0;
 
 found:
   p->state = EMBRYO;
-  p->pid = nextpid++;
+  pid = p->pid = nextpid;
+
+  ptable.ticket_count += DEFAULT_TICKETS;
+  ptable.pstats.inuse[PSTATS_INDEX_FROM_PID(pid)] = 1;
+  ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)] = DEFAULT_TICKETS;
+  ptable.pstats.pid[PSTATS_INDEX_FROM_PID(pid)] = pid;
+  ptable.pstats.ticks[PSTATS_INDEX_FROM_PID(pid)] = 0;
+
+  nextpid++;
 
   release(&ptable.lock);
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
     p->state = UNUSED;
+    acquire(&ptable.lock);
+    ptable.pstats.inuse[PSTATS_INDEX_FROM_PID(pid)] = 0;
+    ptable.ticket_count -= DEFAULT_TICKETS;
+    release(&ptable.lock);
     return 0;
   }
+
   sp = p->kstack + KSTACKSIZE;
 
   // Leave room for trap frame.
@@ -194,6 +212,12 @@ fork(void)
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
+
+    acquire(&ptable.lock);
+    ptable.pstats.inuse[PSTATS_INDEX_FROM_PID(np->pid)] = 0;
+    ptable.ticket_count -= ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(np->pid)];
+    release(&ptable.lock);
+
     return -1;
   }
   np->sz = curproc->sz;
@@ -216,6 +240,11 @@ fork(void)
 
   np->state = RUNNABLE;
 
+  
+  const int parent_tickets = ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(curproc->pid)];
+  ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)] = parent_tickets;
+  ptable.ticket_count += parent_tickets - DEFAULT_TICKETS
+
   release(&ptable.lock);
 
   return pid;
@@ -227,8 +256,7 @@ fork(void)
 void
 exit(void)
 {
-  struct proc *curproc = myproc();
-  struct proc *p;
+  struct proc *curproc = myproc(); 
   int fd;
 
   if(curproc == initproc)
@@ -253,7 +281,7 @@ exit(void)
   wakeup1(curproc->parent);
 
   // Pass abandoned children to init.
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+  for(struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       p->parent = initproc;
       if(p->state == ZOMBIE)
@@ -263,6 +291,10 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  
+  // ABS is needed if we need to kill a SLEEPING proc
+  ptable.ticket_count -= ABS(ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(curproc->pid)]);
+
   sched();
   panic("zombie exit");
 }
@@ -295,6 +327,8 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+
+        ptable.pstats.inuse[PSTATS_INDEX_FROM_PID(pid)] = 0;
         release(&ptable.lock);
         return pid;
       }
@@ -309,6 +343,14 @@ wait(void)
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
+}
+
+static unsigned long randstate = 1;
+static unsigned int
+rand()
+{
+  randstate = randstate * 1664525 + 1013904223;
+  return randstate;
 }
 
 //PAGEBREAK: 42
@@ -332,26 +374,39 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    /* cprintf("tcount:%d\n", ptable.ticket_count); */
+    
+    if (ptable.ticket_count > 0) {
+      const int res = rand() % ptable.ticket_count;
+      int sum = 0;
+      for(int i = 0; i < NPROC; ++i){
+        p = ptable.proc + i;
+        if(p->state != RUNNABLE)
+          continue;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+        sum += ptable.pstats.tickets[i];
+        if (sum <= res) 
+          continue;
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+        // Switch to chosen process.  It is the process's job
+        // to release ptable.lock and then reacquire it
+        // before jumping back to us.
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+        ++ptable.pstats.ticks[PSTATS_INDEX_FROM_PID(p->pid)];
+
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
     }
-    release(&ptable.lock);
 
+    release(&ptable.lock);
   }
 }
 
@@ -439,6 +494,9 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+  ptable.ticket_count -= ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)];
+  ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)] = -ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)];
+
   sched();
 
   // Tidy up.
@@ -460,8 +518,17 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan) {
+      ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)] = 
+        -ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)];
+
+      /* if (ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)] <= 0) {  */
+      /*   panic("expected positive tickets count"); */
+      /* } */
+
+      ptable.ticket_count += ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(p->pid)];
       p->state = RUNNABLE;
+    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -486,8 +553,9 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING) {
         p->state = RUNNABLE;
+      }
       release(&ptable.lock);
       return 0;
     }
@@ -504,12 +572,12 @@ void
 procdump(void)
 {
   static char *states[] = {
-  [UNUSED]    "unused",
-  [EMBRYO]    "embryo",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
+  [UNUSED]   = "unused",
+  [EMBRYO]   = "embryo",
+  [SLEEPING] = "sleep ",
+  [RUNNABLE] = "runble",
+  [RUNNING]  = "run   ",
+  [ZOMBIE]   = "zombie"
   };
   int i;
   struct proc *p;
