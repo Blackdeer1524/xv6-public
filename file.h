@@ -1,6 +1,10 @@
 #ifndef _FILE_H_
 #define _FILE_H_ 
 
+#include "types.h"
+#include "sleeplock.h"
+#include "fs.h"
+
 struct file {
   enum { FD_NONE, FD_PIPE, FD_INODE } type;
   int ref; // reference count

@@ -1,6 +1,9 @@
 #ifndef _SLEEPLOCK_H_
 #define _SLEEPLOCK_H_
 
+#include "types.h"
+#include "spinlock.h"
+
 // Long-term locks for processes
 struct sleeplock {
   uint locked;       // Is the lock held?

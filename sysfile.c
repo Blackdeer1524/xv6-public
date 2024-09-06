@@ -4,6 +4,7 @@
 // user code, and calls into file.c and fs.c.
 //
 
+#include "assert.h"
 #include "pstat.h"
 #include "types.h"
 #include "defs.h"
@@ -462,13 +463,15 @@ sys_setticketscount(void)
   if (argint(0, &t_count) < 0 || t_count < 1) 
     return -1;
 
-  const int pid = myproc()->pid;
+  struct proc *p = myproc();
 
   acquire(&ptable.lock);
 
-  const int old_count = ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)];
+  const int old_count = ptable.pstats.tickets[ptable.proc - p];
+  ASSERT(old_count > 0, "old number of tickets is negative! pid: %d\n", p->pid);
+
   ptable.ticket_count += t_count - old_count;
-  ptable.pstats.tickets[PSTATS_INDEX_FROM_PID(pid)] = t_count;
+  ptable.pstats.tickets[p - ptable.proc] = t_count;
 
   release(&ptable.lock);
 

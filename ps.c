@@ -14,12 +14,12 @@ main(int argc, char *argv[])
     exit();
   }
 
-  printf(1, "pid ticks tickets\n");
+  printf(1, "(index) pid ticks tickets\n");
   for (int i = 0; i < NPROC; ++i) {
     if (!stats.inuse[i]) {
       continue;
     }
-    printf(1, "%d %d %d\n", stats.pid[i], stats.ticks[i], ABS(stats.tickets[i]));
+    printf(1, "(%d) %d %d %d %d\n", i, stats.pid[i], stats.ticks[i], stats.tickets[i], stats.inuse[i]);
   }
 
   exit();

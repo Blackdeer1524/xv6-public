@@ -61,14 +61,32 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
-#define PSTATS_INDEX_FROM_PID(pid) (((pid) - 1) % NPROC)
-
 struct ptable_t {
   struct spinlock lock;
   struct proc proc[NPROC];
   struct pstat pstats;
   int ticket_count;
 };
+
+extern struct ptable_t ptable;
+
+int             cpuid(void);
+void            exit(void);
+int             fork(void);
+int             growproc(int);
+int             kill(int);
+struct cpu*     mycpu(void);
+struct proc*    myproc();
+void            pinit(void);
+void            procdump(void);
+void            scheduler(void) __attribute__((noreturn));
+void            sched(void);
+void            setproc(struct proc*);
+void            sleep(void*, struct spinlock*);
+void            userinit(void);
+int             wait(void);
+void            wakeup(void*);
+void            yield(void);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text
