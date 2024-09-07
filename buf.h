@@ -1,6 +1,11 @@
 #ifndef _BUF_H_
 #define _BUF_H_
 
+#include "types.h"
+#include "sleeplock.h"
+
+#define BSIZE 512  // block size
+
 struct buf {
   int flags;
   uint dev;

@@ -11,6 +11,10 @@
 #include "mmu.h"
 #include "proc.h"
 #include "x86.h"
+#include "uart.h"
+#include "ioapic.h"
+#include "lapic.h"
+#include "console.h"
 
 #define COM1    0x3f8
 

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include "buf.h"
 
 #define stat xv6_stat  // avoid clash with host struct stat
 #include "types.h"
@@ -38,7 +39,7 @@ void wsect(uint, void*);
 void winode(uint, struct dinode*);
 void rinode(uint inum, struct dinode *ip);
 void rsect(uint sec, void *buf);
-uint ialloc(ushort type);
+uint dialloc(ushort type);
 void iappend(uint inum, void *p, int n);
 
 // convert to intel byte order
@@ -114,7 +115,7 @@ main(int argc, char *argv[])
   memmove(buf, &sb, sizeof(sb));
   wsect(1, buf);
 
-  rootino = ialloc(T_DIR);
+  rootino = dialloc(T_DIR);
   assert(rootino == ROOTINO);
 
   bzero(&de, sizeof(de));
@@ -142,7 +143,7 @@ main(int argc, char *argv[])
     if(argv[i][0] == '_')
       ++argv[i];
 
-    inum = ialloc(T_FILE);
+    inum = dialloc(T_FILE);
 
     bzero(&de, sizeof(de));
     de.inum = xshort(inum);
@@ -221,13 +222,12 @@ rsect(uint sec, void *buf)
 }
 
 uint
-ialloc(ushort type)
+dialloc(ushort type)
 {
   uint inum = freeinode++;
   struct dinode din;
 
-  bzero(&din, sizeof(din));
-  din.type = xshort(type);
+  bzero(&din, sizeof(din)); din.type = xshort(type);
   din.nlink = xshort(1);
   din.size = xint(0);
   winode(inum, &din);

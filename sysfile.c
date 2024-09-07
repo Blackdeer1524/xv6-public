@@ -7,16 +7,22 @@
 #include "assert.h"
 #include "pstat.h"
 #include "types.h"
+#include "exec.h"
 #include "defs.h"
 #include "param.h"
 #include "stat.h"
 #include "mmu.h"
 #include "proc.h"
+#include "pipe.h"
 #include "fs.h"
 #include "spinlock.h"
 #include "sleeplock.h"
 #include "file.h"
+#include "syscall_decls.h"
 #include "fcntl.h"
+#include "log.h"
+#include "string.h"
+
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -467,7 +473,7 @@ sys_setticketscount(void)
 
   acquire(&ptable.lock);
 
-  const int old_count = ptable.pstats.tickets[ptable.proc - p];
+  const int old_count = ptable.pstats.tickets[p - ptable.proc];
   ASSERT(old_count > 0, "old number of tickets is negative! pid: %d\n", p->pid);
 
   ptable.ticket_count += t_count - old_count;

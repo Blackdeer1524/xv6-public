@@ -3,9 +3,7 @@
 
 #include "pstat.h"
 #include "types.h"
-
-struct stat;
-struct rtcdate;
+#include "stat.h"
 
 // system calls
 int fork(void);

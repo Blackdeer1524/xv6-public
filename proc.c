@@ -1,16 +1,21 @@
 #include "types.h"
+#include "string.h"
+#include "log.h"
+#include "kalloc.h"
 #include "defs.h"
 #include "param.h"
-#include "memlayout.h"
+#include "lapic.h"
+#include "fs.h"
+#include "swtch.h"
 #include "mmu.h"
 #include "x86.h"
+#include "vm.h"
 #include "proc.h"
 #include "spinlock.h"
 #include "pstat.h"
 #include "assert.h"
 
 #define DEFAULT_TICKETS 4;
-#define ABS(x) ((x) >= 0 ? (x) : -(x))
 
 struct ptable_t ptable;
 

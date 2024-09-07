@@ -19,12 +19,13 @@
 //     and needs to be written to disk.
 
 #include "types.h"
-#include "defs.h"
 #include "param.h"
 #include "spinlock.h"
+#include "console.h"
 #include "sleeplock.h"
-#include "fs.h"
+#include "ide.h"
 #include "buf.h"
+#include "bio.h"
 
 struct {
   struct spinlock lock;

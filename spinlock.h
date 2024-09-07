@@ -1,6 +1,8 @@
 #ifndef _SPINLOCK_H_
 #define _SPINLOCK_H_
 
+#include "types.h"
+
 // Mutual exclusion lock.
 struct spinlock {
   uint locked;       // Is the lock held?
@@ -11,5 +13,13 @@ struct spinlock {
   uint pcs[10];      // The call stack (an array of program counters)
                      // that locked the lock.
 };
+
+void acquire(struct spinlock*);
+void getcallerpcs(void*, uint*);
+int  holding(struct spinlock*);
+void initlock(struct spinlock*, char*);
+void release(struct spinlock*);
+void pushcli(void);
+void popcli(void);
 
 #endif

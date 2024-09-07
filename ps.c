@@ -1,8 +1,7 @@
 #include "param.h"
 #include "pstat.h"
 #include "user.h"
-
-#define ABS(x) ((x) >= 0 ? (x) : -(x))
+#include "defs.h"
 
 int 
 main(int argc, char *argv[]) 
@@ -19,7 +18,7 @@ main(int argc, char *argv[])
     if (!stats.inuse[i]) {
       continue;
     }
-    printf(1, "(%d) %d %d %d %d\n", i, stats.pid[i], stats.ticks[i], stats.tickets[i], stats.inuse[i]);
+    printf(1, "(%d) %d %d %d %d\n", i, stats.pid[i], stats.ticks[i], ABS(stats.tickets[i]), stats.inuse[i]);
   }
 
   exit();
