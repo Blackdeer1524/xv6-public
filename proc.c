@@ -255,6 +255,69 @@ fork(void)
   return child_pid;
 }
 
+int 
+clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
+{
+  int i, child_pid;
+  struct proc *np;
+  struct proc *curproc = myproc();
+
+  // Allocate process.
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+
+  int sp = (uint) stack + PGSIZE;
+  uint ustack[3];
+
+  ustack[0] = 0xffffffff;  // fake return PC
+  ustack[1] = (uint) arg1;
+  ustack[2] = (uint) arg2;
+  np->tf->esp = sp -= sizeof(ustack);
+  if (copyout(np->pgdir, sp, ustack, sizeof(ustack)) < 0) {
+    kfree(np->kstack);
+    np->kstack = 0;
+    np->state = UNUSED;
+
+    acquire(&ptable.lock);
+    ptable.pstats.inuse[ptable.proc - np] = 0;
+    ptable.ticket_count -= ptable.pstats.tickets[np - ptable.proc];
+    release(&ptable.lock);
+
+    return -1;
+  }
+  np->pgdir = curproc->pgdir;
+
+  ASSERT(0, "don't know what to to into np->sz");
+  np->sz = curproc->sz;
+  np->parent = curproc;
+  *np->tf = *curproc->tf;
+  np->tf->eip = (uint) fcn;
+  np->tf->eax = 0; // Clear %eax so that clone returns 0 in the child.
+
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = filedup(curproc->ofile[i]);
+  np->cwd = idup(curproc->cwd);
+
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+  child_pid = np->pid;
+
+  acquire(&ptable.lock);
+
+  np->state = RUNNABLE;
+
+  const int parent_tickets = ptable.pstats.tickets[curproc - ptable.proc];
+  ASSERT(parent_tickets > 0, "parent tickets are negative! [par:%d,cur:%d], par state: %d\n", curproc->pid, child_pid, curproc->state);
+  ptable.pstats.tickets[np - ptable.proc] = parent_tickets;
+  ptable.ticket_count += parent_tickets - DEFAULT_TICKETS
+
+  release(&ptable.lock);
+
+  return child_pid;
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
