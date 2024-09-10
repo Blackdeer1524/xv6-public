@@ -104,6 +104,8 @@ extern int sys_uptime(void);
 extern int sys_getreadscount(void);
 extern int sys_setticketscount(void);
 extern int sys_getpinfo(void);
+extern int sys_mprotect(void);
+extern int sys_munprotect(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]            = sys_fork,
@@ -130,6 +132,8 @@ static int (*syscalls[])(void) = {
 [SYS_getreadcount]    = sys_getreadscount,
 [SYS_setticketscount] = sys_setticketscount,
 [SYS_getpinfo]        = sys_getpinfo,
+[SYS_mprotect]        = sys_mprotect,
+[SYS_munprotect]      = sys_munprotect,
 };
 
 void

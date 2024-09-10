@@ -3,11 +3,11 @@
 
 #include "types.h"
 
-int             argint(int, int*);
-int             argptr(int, char**, int);
-int             argstr(int, char**);
-int             fetchint(uint, int*);
-int             fetchstr(uint, char**);
-void            syscall(void);
+int  argint(int n, int *ip);
+int  argptr(int n, char **pp, int size);
+int  argstr(int n, char **pp);
+int  fetchint(uint addr, int *ip);
+int  fetchstr(uint addr, char **pp);
+void syscall(void);
 
 #endif
