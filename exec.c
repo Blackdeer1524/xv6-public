@@ -61,20 +61,19 @@ exec(char *path, char **argv)
     if(ph.type != ELF_PROG_LOAD)
       continue;
     if(ph.memsz < ph.filesz) {
-      cprintf("1\n");
+      cprintf("memsz < filesz\n");
       goto bad;
     }
     if(ph.vaddr + ph.memsz < ph.vaddr) {
-      cprintf("2\n");
+      cprintf("memsz is too large\n");
       goto bad;
     }
-    ASSERT(ph.vaddr == 0x1000, "loading address of code section has to be in the second page");
-    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0) {
+    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz - PGSIZE)) == 0) {
       cprintf("could't allocate uvm\n");
       goto bad;
     }
     if(ph.vaddr % PGSIZE != 0) {
-      cprintf("3\n");
+      cprintf("virtual address is not page aligned\n");
       goto bad;
     }
     if(loaduvm(pgdir, (char*)ph.vaddr, ip, ph.off, ph.filesz) < 0) {
@@ -89,12 +88,12 @@ exec(char *path, char **argv)
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0) {
+  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0) {  
     cprintf("could't allocate two pages\n");
     goto bad;
   }
-  clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
-  sp = sz;
+  clearpteu(pgdir, (char*)((sz + PGSIZE) - 2*PGSIZE));
+  sp = sz + PGSIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
@@ -134,7 +133,6 @@ exec(char *path, char **argv)
   switchuvm(curproc);
   freevm(oldpgdir);
 
-  cprintf("successfull exec\n");
   return 0;
 
  bad:
@@ -144,6 +142,5 @@ exec(char *path, char **argv)
     iunlockput(ip);
     end_op();
   }
-  cprintf("failed exec\n");
   return -1;
 }

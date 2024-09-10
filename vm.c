@@ -214,7 +214,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
       n = sz - i;
     else
       n = PGSIZE;
-    cprintf("loading to %p\n", pa);
     if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
   }
@@ -243,9 +242,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    cprintf("binding %p (virtual) -> %p[%p] (physical)\n", a + PGSIZE, mem, V2P(mem));
     if(mappages(pgdir, (char*)a + PGSIZE, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
-      cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
       return 0;

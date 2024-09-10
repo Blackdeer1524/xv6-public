@@ -381,7 +381,6 @@ scheduler(void)
     /* cprintf("tcount:%d\n", ptable.ticket_count); */
     
     ASSERT(ptable.ticket_count >= 0, "ticket count became negative: %d!\n", ptable.ticket_count)
-    // has no tickets because init proc is in EMBRYO state
     if (ptable.ticket_count > 0) {
       const int res = rand() % ptable.ticket_count;
       int sum = 0;
