@@ -98,17 +98,15 @@ sys_clone(void)
 {
   int fn, arg1, arg2;
   char *stack;
-  if (argint(0, &fn) < 0 || argint(1, &arg1) < 0 
-      || argint(2, &arg2) < 0 || argptr(3, &stack, PGSIZE) < 0 
-      || (uint) stack % PGSIZE != 0) {
+  if (argint(0, &fn) < 0 || argint(1, &arg1) < 0 || argint(2, &arg2) < 0) {
     return -1;
+  } else if (argptr(3, &stack, PGSIZE) < 0) {
+    return -2;
+  } else if ((uint) stack % PGSIZE != 0) {
+    return -3;
   }
 
-  if (clone((void(*)(void*, void *)) fn, (void *) arg1, (void *) arg2, stack)) {
-    return -1;
-  }
-
-  return 0;
+  return clone((void(*)(void*, void *)) fn, (void *) arg1, (void *) arg2, stack);
 }
 
 int
@@ -118,9 +116,5 @@ sys_join(void)
   if (argint(0, &stack) < 0) {
     return -1;
   }
-  if (join((void **) stack) < 0) {
-    return -1;
-  }
-
-  return 0;
+  return join((void **) stack);
 }

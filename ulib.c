@@ -1,3 +1,4 @@
+#include "kalloc.h"
 #include "mmu.h"
 #include "types.h"
 #include "stat.h"
@@ -113,8 +114,12 @@ memmove(void *vdst, const void *vsrc, int n)
 int
 thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2)
 {
-  void *stack = malloc((uint) PGSIZE);
-  return clone(start_routine, arg1, arg2, stack);
+  void *stack = malloc(PGSIZE); 
+  int res = clone(start_routine, arg1, arg2, stack);
+  if (res < 0) {
+    free(stack);
+  }
+  return res; 
 }
 
 int 

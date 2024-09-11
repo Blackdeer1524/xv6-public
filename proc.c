@@ -15,8 +15,12 @@
 #include "pstat.h"
 #include "assert.h"
 
+int IS_CHILD_THREAD(struct proc *child, struct proc *parent) {
+  ASSERT(parent != 0, "parent is null!");
+  return child->pgdir == parent->pgdir;
+}
+
 #define DEFAULT_TICKETS 4;
-#define IS_CHILD_THREAD(child, parent) (child->pgdir == parent->pgdir)
 
 struct ptable_t ptable;
 
@@ -268,37 +272,25 @@ clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
     return -1;
   }
 
-  int sp = (uint) stack + PGSIZE;
-  uint ustack[3];
+  uint sp = (uint) stack + PGSIZE;
+  sp -= 3 * 4;
 
-  ustack[0] = 0xffffffff;  // fake return PC
-  ustack[1] = (uint) arg1;
-  ustack[2] = (uint) arg2;
-  sp -= sizeof(ustack);
-  if (copyout(np->pgdir, sp, ustack, sizeof(ustack)) < 0) {
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
+  *(uint*)sp = 0xffffffff;
+  *(uint*)(sp + 4) = (uint) arg1;
+  *(uint*)(sp + 8) = (uint) arg2;
 
-    acquire(&ptable.lock);
-    ptable.pstats.inuse[ptable.proc - np] = 0;
-    ptable.ticket_count -= ptable.pstats.tickets[np - ptable.proc];
-    release(&ptable.lock);
-
-    return -1;
-  }
   np->pgdir = curproc->pgdir;
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
-  np->tf->ebp = (uint) stack;
+  np->tf->ebp = (uint) stack + PGSIZE;
   np->tf->esp = sp;  
   np->tf->eip = (uint) fcn;
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
-      np->ofile[i] = filedup(curproc->ofile[i]);
-  np->cwd = idup(curproc->cwd);
+      np->ofile[i] = curproc->ofile[i];
+  np->cwd = curproc->cwd;
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
@@ -332,24 +324,27 @@ join(void **stack)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->parent != curproc)
         continue;
-      if (p->state == ZOMBIE && IS_CHILD_THREAD(p, curproc)) {
+      if (IS_CHILD_THREAD(p, curproc)) {
         havekids = 1;
-        // Found one.
-        pid = p->pid;
-        kfree(p->kstack);
-        p->kstack = 0;
-        p->pid = 0;
-        p->parent = 0;
-        p->name[0] = 0;
-        p->killed = 0;
-        p->state = UNUSED;
+        if (p->state == ZOMBIE) {
+          // Found one.
+          pid = p->pid;
 
-        // I assume that stack is one page in size and is page aligned
-        *stack = (void *) PGROUNDDOWN(p->tf->esp);  
+          // Assuming that stack is one page in size and is page aligned
+          *stack = (void *) PGROUNDDOWN(p->tf->esp);  
 
-        ptable.pstats.inuse[p - ptable.proc] = 0;
-        release(&ptable.lock);
-        return pid;
+          kfree(p->kstack);
+          p->kstack = 0;
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
+
+          ptable.pstats.inuse[p - ptable.proc] = 0;
+          release(&ptable.lock);
+          return pid;
+        }
       }
     }
 
@@ -371,13 +366,12 @@ void
 exit(void)
 {
   struct proc *curproc = myproc(); 
-  int fd;
 
   if(curproc == initproc)
     panic("init exiting");
 
   // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
+  for(int fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
       fileclose(curproc->ofile[fd]);
       curproc->ofile[fd] = 0;
@@ -398,9 +392,17 @@ exit(void)
   for(struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       if (IS_CHILD_THREAD(p, curproc)) {
-        if (kill(p->pid) < 0) {
-          panic("couldn't kill child thread");
-        }
+        // see how wait() syscall cleans up ZOMBIE procs
+        p->cwd = 0;
+        kfree(p->kstack);
+        p->kstack = 0;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        ptable.pstats.inuse[p - ptable.proc] = 0;
+        ptable.ticket_count -= ABS(ptable.pstats.tickets[p - ptable.proc]);
       } else {
         p->parent = initproc;
         if(p->state == ZOMBIE)
@@ -434,22 +436,24 @@ wait(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->parent != curproc)
         continue;
-      if (p->state == ZOMBIE && !IS_CHILD_THREAD(p, curproc)) {
+      if (!IS_CHILD_THREAD(p, curproc)) {
         havekids = 1;
-        // Found one.
-        pid = p->pid;
-        kfree(p->kstack);
-        p->kstack = 0;
-        freevm(p->pgdir);
-        p->pid = 0;
-        p->parent = 0;
-        p->name[0] = 0;
-        p->killed = 0;
-        p->state = UNUSED;
+        if (p->state == ZOMBIE) {
+          // Found one.
+          pid = p->pid;
+          kfree(p->kstack);
+          p->kstack = 0;
+          freevm(p->pgdir);
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
 
-        ptable.pstats.inuse[p - ptable.proc] = 0;
-        release(&ptable.lock);
-        return pid;
+          ptable.pstats.inuse[p - ptable.proc] = 0;
+          release(&ptable.lock);
+          return pid;
+        }
       }
     }
 

@@ -9,6 +9,7 @@ int
 main(void)
 {
   int pid, wpid;
+  void *stack;
 
   if(open("console", O_RDWR) < 0){
     mknod("console", 1, 1);
@@ -31,5 +32,9 @@ main(void)
     }
     while((wpid=wait()) >= 0 && wpid != pid)
       printf(1, "zombie!\n");
+
+    while((wpid=join(&stack)) >= 0 && wpid != pid)
+      printf(1, "zombie!\n");
+    free(stack);
   }
 }

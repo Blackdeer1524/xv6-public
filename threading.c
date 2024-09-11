@@ -3,9 +3,23 @@
 void 
 foo(void *first, void *second) 
 {
+	printf(1, "first: %p; second: %p\n", first, second);
+
 	int f = *(int *)first;
 	int s = *(int *)second;
-	printf(1, "first: %d; second: %d\n", f, s);
+	printf(1, "[!!!] first: %d; second: %d\n", f, s);
+	exit();
+}
+
+void
+worker(void *first, void *second)
+{
+	printf(1, "worker: start\n");
+	for (int i = 0; i < 1000000000; ++i) {
+		asm volatile("" : : : "memory");
+	}
+	printf(1, "worker: finish\n");
+	
 	exit();
 }
 
@@ -14,17 +28,10 @@ main()
 {
 	int f = 123;
 	int s = 256;
-	printf(1, "creating a thread...\n");
-	int tid = thread_create(foo, &f, &s);
-	if (tid < 0) {
-		printf(1, "couldn't create a thread\n");
-		exit();
-	}
-	printf(1, "thread: %d. joining...\n", tid);
-	if (thread_join() < 0) {
-		printf(1, "couldn't join %d\n", tid);
-		exit();
-	};
-	printf(1, "joined\n", tid);
+	/* printf(1, "created a thread %d\n", thread_create(foo, &f, &s)); */
+	printf(1, "created a thread %d\n", thread_create(worker, &f, &s));
+	/* printf(1, "joined %d\n", thread_join()); */
+	/* printf(1, "joined %d\n", thread_join()); */
+	/* printf(1, "joined %d\n", thread_join()); */
 	exit();
 }
