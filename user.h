@@ -6,6 +6,9 @@
 #include "stat.h"
 
 // system calls
+int clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack);
+int join(void **stack);
+
 int fork(void);
 int exit(void) __attribute__((noreturn));
 int wait(void);
@@ -34,6 +37,9 @@ int setticketscount(int tickets);
 int mprotect(void *addr, int len);
 // addr has to be page aligned, len > 0
 int munprotect(void *addr, int len);
+// threading
+int thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2);
+int thread_join(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

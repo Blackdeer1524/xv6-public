@@ -16,6 +16,7 @@
 #include "assert.h"
 
 #define DEFAULT_TICKETS 4;
+#define IS_CHILD_THREAD(child, parent) (child->pgdir == parent->pgdir)
 
 struct ptable_t ptable;
 
@@ -273,7 +274,7 @@ clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
   ustack[0] = 0xffffffff;  // fake return PC
   ustack[1] = (uint) arg1;
   ustack[2] = (uint) arg2;
-  np->tf->esp = sp -= sizeof(ustack);
+  sp -= sizeof(ustack);
   if (copyout(np->pgdir, sp, ustack, sizeof(ustack)) < 0) {
     kfree(np->kstack);
     np->kstack = 0;
@@ -287,13 +288,12 @@ clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
     return -1;
   }
   np->pgdir = curproc->pgdir;
-
-  ASSERT(0, "don't know what to to into np->sz");
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+  np->tf->ebp = (uint) stack;
+  np->tf->esp = sp;  
   np->tf->eip = (uint) fcn;
-  np->tf->eax = 0; // Clear %eax so that clone returns 0 in the child.
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
@@ -318,6 +318,52 @@ clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
   return child_pid;
 }
 
+int
+join(void **stack) 
+{
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for exited children threads.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc)
+        continue;
+      if (p->state == ZOMBIE && IS_CHILD_THREAD(p, curproc)) {
+        havekids = 1;
+        // Found one.
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+
+        // I assume that stack is one page in size and is page aligned
+        *stack = (void *) PGROUNDDOWN(p->tf->esp);  
+
+        ptable.pstats.inuse[p - ptable.proc] = 0;
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+  }
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
@@ -339,7 +385,7 @@ exit(void)
   }
 
   begin_op();
-  iput(curproc->cwd);
+  iput(curproc->cwd); // also needed for threads
   end_op();
   curproc->cwd = 0;
 
@@ -351,9 +397,15 @@ exit(void)
   // Pass abandoned children to init.
   for(struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
-      p->parent = initproc;
-      if(p->state == ZOMBIE)
-        wakeup1(initproc);
+      if (IS_CHILD_THREAD(p, curproc)) {
+        if (kill(p->pid) < 0) {
+          panic("couldn't kill child thread");
+        }
+      } else {
+        p->parent = initproc;
+        if(p->state == ZOMBIE)
+          wakeup1(initproc);
+      }
     }
   }
 
@@ -382,8 +434,8 @@ wait(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->parent != curproc)
         continue;
-      havekids = 1;
-      if(p->state == ZOMBIE){
+      if (p->state == ZOMBIE && !IS_CHILD_THREAD(p, curproc)) {
+        havekids = 1;
         // Found one.
         pid = p->pid;
         kfree(p->kstack);

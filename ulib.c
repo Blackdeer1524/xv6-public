@@ -1,3 +1,4 @@
+#include "mmu.h"
 #include "types.h"
 #include "stat.h"
 #include "fcntl.h"
@@ -103,4 +104,23 @@ memmove(void *vdst, const void *vsrc, int n)
   while(n-- > 0)
     *dst++ = *src++;
   return vdst;
+}
+ 
+/* struct __page_t { */
+/*     _Alignas(PGSIZE) char page[PGSIZE];  */
+/* }; */
+
+int
+thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2)
+{
+  void *stack = malloc((uint) PGSIZE);
+  return clone(start_routine, arg1, arg2, stack);
+}
+
+int 
+thread_join() {
+  void *stack;
+  int res = join(&stack);
+  free(stack);
+  return res;
 }
