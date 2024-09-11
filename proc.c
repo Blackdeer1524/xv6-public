@@ -124,6 +124,7 @@ found:
     return 0;
   }
   release(&ptable.lock);
+  initlock(&p->lock, "");
 
   sp = p->kstack + KSTACKSIZE;
 
@@ -190,6 +191,12 @@ growproc(int n)
   uint sz;
   struct proc *curproc = myproc();
 
+  acquire(&curproc->lock);
+  if (curproc->pid == 0) {
+    // see exit() syscall
+    release(&curproc->lock);
+    return 0;
+  }
   sz = curproc->sz;
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
@@ -200,6 +207,7 @@ growproc(int n)
   }
   curproc->sz = sz;
   switchuvm(curproc);
+  release(&curproc->lock);
   return 0;
 }
 
@@ -393,6 +401,7 @@ exit(void)
     if(p->parent == curproc){
       if (IS_CHILD_THREAD(p, curproc)) {
         // see how wait() syscall cleans up ZOMBIE procs
+        acquire(&p->lock);
         p->cwd = 0;
         kfree(p->kstack);
         p->kstack = 0;
@@ -403,6 +412,7 @@ exit(void)
         p->state = UNUSED;
         ptable.pstats.inuse[p - ptable.proc] = 0;
         ptable.ticket_count -= ABS(ptable.pstats.tickets[p - ptable.proc]);
+        release(&p->lock);
       } else {
         p->parent = initproc;
         if(p->state == ZOMBIE)
