@@ -379,17 +379,19 @@ exit(void)
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
-      fileclose(curproc->ofile[fd]);
-      curproc->ofile[fd] = 0;
+  if (!IS_CHILD_THREAD(curproc, curproc->parent)) {
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        fileclose(curproc->ofile[fd]);
+        curproc->ofile[fd] = 0;
+      }
     }
-  }
 
-  begin_op();
-  iput(curproc->cwd); // also needed for threads
-  end_op();
-  curproc->cwd = 0;
+    begin_op();
+    iput(curproc->cwd); // also needed for threads
+    end_op();
+    curproc->cwd = 0;
+  }
 
   acquire(&ptable.lock);
 

@@ -129,3 +129,29 @@ thread_join() {
   free(stack);
   return res;
 }
+
+void lock_init(struct lock_t *lock) {
+  lock->ticket = 0;
+  lock->turn = 0;
+}
+
+// see https://en.wikipedia.org/w/index.php?title=Fetch-and-add#x86_implementation
+static inline int fetch_and_add(int* variable, int value)
+{
+    asm volatile("lock; xaddl %0, %1"
+      : "+r" (value), "+m" (*variable) // input + output
+      : // No input-only
+      : "memory"
+    );
+    return value;
+}
+
+void lock(struct lock_t *lock) {
+  int myturn = fetch_and_add(&lock->ticket, 1);
+  while (lock->turn != myturn)
+    printf(1, "?\n");
+}
+
+void unlock(struct lock_t *lock) {
+  ++lock->turn;
+}

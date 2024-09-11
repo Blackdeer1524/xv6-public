@@ -41,6 +41,14 @@ int munprotect(void *addr, int len);
 int thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2);
 int thread_join(void);
 
+struct lock_t {
+  int ticket;
+  int turn;
+};
+void lock_init(struct lock_t *lock);
+void lock(struct lock_t *lock);
+void unlock(struct lock_t *lock);
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);
