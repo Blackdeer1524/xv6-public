@@ -20,7 +20,7 @@ int IS_CHILD_THREAD(struct proc *child, struct proc *parent) {
   return child->pgdir == parent->pgdir;
 }
 
-#define DEFAULT_TICKETS 4;
+#define DEFAULT_TICKETS 4
 
 struct ptable_t ptable;
 
@@ -313,9 +313,8 @@ clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
   np->state = RUNNABLE;
 
   const int parent_tickets = ptable.pstats.tickets[curproc - ptable.proc];
-  ASSERT(parent_tickets > 0, "parent tickets are negative! [par:%d,cur:%d], par state: %d\n", curproc->pid, child_pid, curproc->state);
+  ptable.ticket_count += parent_tickets - ptable.pstats.tickets[np - ptable.proc];
   ptable.pstats.tickets[np - ptable.proc] = parent_tickets;
-  ptable.ticket_count += parent_tickets - DEFAULT_TICKETS
 
   release(&ptable.lock);
 
@@ -413,6 +412,9 @@ exit(void)
       if (IS_CHILD_THREAD(p, curproc)) {
         // see how wait() syscall cleans up ZOMBIE procs
         acquire(&p->lock);
+        if (p->state == RUNNABLE) {
+          ptable.ticket_count -= ptable.pstats.tickets[p - ptable.proc];
+        }
         p->cwd = 0;
         kfree(p->kstack);
         p->kstack = 0;
@@ -422,7 +424,6 @@ exit(void)
         p->killed = 0;
         p->state = UNUSED;
         ptable.pstats.inuse[p - ptable.proc] = 0;
-        ptable.ticket_count -= ABS(ptable.pstats.tickets[p - ptable.proc]);
         release(&p->lock);
       } else {
         p->parent = initproc;
@@ -520,7 +521,6 @@ scheduler(void)
     acquire(&ptable.lock);
     /* cprintf("tcount:%d\n", ptable.ticket_count); */
     
-    ASSERT(ptable.ticket_count >= 0, "ticket count became negative: %d!\n", ptable.ticket_count)
     if (ptable.ticket_count > 0) {
       const int res = rand() % ptable.ticket_count;
       int sum = 0;
@@ -529,7 +529,6 @@ scheduler(void)
         if(p->state != RUNNABLE)
           continue;
 
-        ASSERT(ptable.pstats.tickets[i] > 0, "%d has %d tickets even though it is RUNNABLE\n", p->pid, ptable.pstats.tickets[i]);
         sum += ptable.pstats.tickets[i];
         if (sum <= res) 
           continue;

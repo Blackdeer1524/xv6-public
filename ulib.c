@@ -106,20 +106,37 @@ memmove(void *vdst, const void *vsrc, int n)
     *dst++ = *src++;
   return vdst;
 }
- 
-/* struct __page_t { */
-/*     _Alignas(PGSIZE) char page[PGSIZE];  */
-/* }; */
+
+// https://stackoverflow.com/questions/38088732/explanation-to-aligned-malloc-implementation
+void* aligned_malloc(uint required_bytes, uint alignment)
+{
+    void* p1; // original block
+    void** p2; // aligned block
+    int offset = alignment - 1 + sizeof(void*);
+    if ((p1 = (void*)malloc(required_bytes + offset)) == 0)
+    {
+       return 0;
+    }
+    p2 = (void**)(((uint)(p1) + offset) & ~(alignment - 1));
+    p2[-1] = p1;
+    return p2;
+}
+
+void aligned_free(void *p)
+{
+    free(((void**)p)[-1]);
+}
 
 int
 thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2)
 {
-  void *stack = malloc(PGSIZE); 
+  void *stack = aligned_malloc(PGSIZE, PGSIZE); 
+
   int res = clone(start_routine, arg1, arg2, stack);
   if (res < 0) {
-    free(stack);
+    aligned_free(stack);
   }
-  return res; 
+  return res;
 }
 
 int 

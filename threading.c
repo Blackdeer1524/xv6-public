@@ -23,6 +23,7 @@ main()
 	lock_init(&LOCK);
 
 	printf(1, "created a thread %d\n", thread_create(bar, 0, 0));
+	printf(1, "created a thread %d\n", thread_create(bar, 0, 0));
 
 	printf(1, "[parent] locking...\n");
 	lock(&LOCK);
