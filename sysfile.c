@@ -474,7 +474,6 @@ sys_setticketscount(void)
   acquire(&ptable.lock);
 
   const int old_count = ptable.pstats.tickets[p - ptable.proc];
-  ASSERT(old_count > 0, "old number of tickets is negative! pid: %d\n", p->pid);
 
   ptable.ticket_count += t_count - old_count;
   ptable.pstats.tickets[p - ptable.proc] = t_count;

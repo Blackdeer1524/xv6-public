@@ -110,17 +110,15 @@ found:
   ptable.pstats.pid[p - ptable.proc] = pid;
   ptable.pstats.ticks[p - ptable.proc] = 0;
 
-  release(&ptable.lock);
-
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
-    acquire(&ptable.lock);
     p->state = UNUSED;
     ptable.ticket_count -= DEFAULT_TICKETS;
     ptable.pstats.inuse[p - ptable.proc] = 0;
     release(&ptable.lock);
     return 0;
   }
+  release(&ptable.lock);
 
   sp = p->kstack + KSTACKSIZE;
 
@@ -249,9 +247,8 @@ fork(void)
   np->state = RUNNABLE;
 
   const int parent_tickets = ptable.pstats.tickets[curproc - ptable.proc];
-  ASSERT(parent_tickets > 0, "parent tickets are negative! [par:%d,cur:%d], par state: %d\n", curproc->pid, child_pid, curproc->state);
+  ptable.ticket_count += parent_tickets - ptable.pstats.tickets[np - ptable.proc];
   ptable.pstats.tickets[np - ptable.proc] = parent_tickets;
-  ptable.ticket_count += parent_tickets - DEFAULT_TICKETS
 
   release(&ptable.lock);
 
@@ -300,8 +297,7 @@ exit(void)
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
   
-  // ABS is needed if we need to kill a SLEEPING proc
-  ptable.ticket_count -= ABS(ptable.pstats.tickets[curproc - ptable.proc]);
+  ptable.ticket_count -= ptable.pstats.tickets[curproc - ptable.proc];
 
   sched();
   panic("zombie exit");
@@ -393,6 +389,7 @@ scheduler(void)
         if(p->state != RUNNABLE)
           continue;
 
+        ASSERT(ptable.pstats.tickets[i] > 0, "%d has %d tickets even though it is RUNNABLE\n", p->pid, ptable.pstats.tickets[i]);
         sum += ptable.pstats.tickets[i];
         if (sum <= res) 
           continue;
@@ -505,9 +502,7 @@ sleep(void *chan, struct spinlock *lk)
   ASSERT(ptable.lock.locked, "ptable is not locked when going to sleep!\n");
   ASSERT(p->state != SLEEPING, "double sleep has occured!\n");
   p->state = SLEEPING;
-
   ptable.ticket_count -= ptable.pstats.tickets[p - ptable.proc];
-  ptable.pstats.tickets[p - ptable.proc] = -ptable.pstats.tickets[p - ptable.proc];
 
   sched();
 
@@ -531,13 +526,6 @@ wakeup1(void *chan)
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan) {
-      ASSERT(ptable.pstats.tickets[p - ptable.proc] < 0, 
-          "sleeping process had positive number of tickets! pid: %d\n", 
-          p->pid);
-
-      ptable.pstats.tickets[p - ptable.proc] = 
-        -ptable.pstats.tickets[p - ptable.proc];
-
       ptable.ticket_count += ptable.pstats.tickets[p - ptable.proc];
       p->state = RUNNABLE;
     }
@@ -566,6 +554,7 @@ kill(int pid)
       p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING) {
+        ptable.ticket_count += ptable.pstats.tickets[p - ptable.proc];
         p->state = RUNNABLE;
       }
       release(&ptable.lock);
@@ -603,7 +592,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d %s %s %d", p->pid, state, p->name, ptable.pstats.tickets[p - ptable.proc]);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
@@ -611,4 +600,5 @@ procdump(void)
     }
     cprintf("\n");
   }
+  cprintf("total ticket count: %d\n", ptable.ticket_count);
 }
