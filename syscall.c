@@ -32,7 +32,7 @@ fetchstr(uint addr, char **pp)
   char *s, *ep;
   struct proc *curproc = myproc();
 
-  if(addr >= curproc->sz + PGSIZE)
+  if(addr < PGSIZE || addr >= curproc->sz + PGSIZE)
     return -1;
   *pp = (char*)addr;
   ep = (char*)curproc->sz + PGSIZE;
