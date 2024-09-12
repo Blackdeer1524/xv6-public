@@ -149,7 +149,7 @@ static inline int fetch_and_add(int* variable, int value)
 void lock(struct lock_t *lock) {
   int myturn = fetch_and_add(&lock->ticket, 1);
   while (lock->turn != myturn)
-    printf(1, "?\n");
+    ;
 }
 
 void unlock(struct lock_t *lock) {

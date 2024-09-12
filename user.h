@@ -43,7 +43,7 @@ int thread_join(void);
 
 struct lock_t {
   int ticket;
-  int turn;
+  volatile int turn;  // unlock() wouldn't work without `volatile`
 };
 void lock_init(struct lock_t *lock);
 void lock(struct lock_t *lock);

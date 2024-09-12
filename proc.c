@@ -199,15 +199,19 @@ growproc(int n)
   }
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0) {
+      release(&curproc->lock);
       return -1;
+    }
   } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0) {
+      release(&curproc->lock);
       return -1;
+    }
   }
   curproc->sz = sz;
-  switchuvm(curproc);
   release(&curproc->lock);
+  switchuvm(curproc);
   return 0;
 }
 
@@ -378,7 +382,6 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
 
-  // Close all open files.
   if (!IS_CHILD_THREAD(curproc, curproc->parent)) {
     for(int fd = 0; fd < NOFILE; fd++){
       if(curproc->ofile[fd]){
@@ -390,8 +393,14 @@ exit(void)
     begin_op();
     iput(curproc->cwd); // also needed for threads
     end_op();
-    curproc->cwd = 0;
+  } else {
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        curproc->ofile[fd] = 0;
+      }
+    }
   }
+  curproc->cwd = 0;
 
   acquire(&ptable.lock);
 
