@@ -6,6 +6,9 @@
 #include "stat.h"
 
 // system calls
+int clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack);
+int join(void **stack);
+
 int fork(void);
 int exit(void) __attribute__((noreturn));
 int wait(void);
@@ -34,6 +37,17 @@ int setticketscount(int tickets);
 int mprotect(void *addr, int len);
 // addr has to be page aligned, len > 0
 int munprotect(void *addr, int len);
+// threading
+int thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2);
+int thread_join(void);
+
+struct lock_t {
+  int ticket;
+  volatile int turn;  // unlock() wouldn't work without `volatile`
+};
+void lock_init(struct lock_t *lock);
+void lock(struct lock_t *lock);
+void unlock(struct lock_t *lock);
 
 // ulib.c
 int stat(const char*, struct stat*);

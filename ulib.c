@@ -1,3 +1,5 @@
+#include "kalloc.h"
+#include "mmu.h"
 #include "types.h"
 #include "stat.h"
 #include "fcntl.h"
@@ -103,4 +105,70 @@ memmove(void *vdst, const void *vsrc, int n)
   while(n-- > 0)
     *dst++ = *src++;
   return vdst;
+}
+
+// https://stackoverflow.com/questions/38088732/explanation-to-aligned-malloc-implementation
+void* aligned_malloc(uint required_bytes, uint alignment)
+{
+    void* p1; // original block
+    void** p2; // aligned block
+    int offset = alignment - 1 + sizeof(void*);
+    if ((p1 = (void*)malloc(required_bytes + offset)) == 0)
+    {
+       return 0;
+    }
+    p2 = (void**)(((uint)(p1) + offset) & ~(alignment - 1));
+    p2[-1] = p1;
+    return p2;
+}
+
+void aligned_free(void *p)
+{
+    free(((void**)p)[-1]);
+}
+
+int
+thread_create(void (*start_routine)(void *, void *), void *arg1, void *arg2)
+{
+  void *stack = aligned_malloc(PGSIZE, PGSIZE); 
+
+  int res = clone(start_routine, arg1, arg2, stack);
+  if (res < 0) {
+    aligned_free(stack);
+  }
+  return res;
+}
+
+int 
+thread_join() {
+  void *stack;
+  int res = join(&stack);
+  free(stack);
+  return res;
+}
+
+void lock_init(struct lock_t *lock) {
+  lock->ticket = 0;
+  lock->turn = 0;
+}
+
+// see https://en.wikipedia.org/w/index.php?title=Fetch-and-add#x86_implementation
+static inline int fetch_and_add(int* variable, int value)
+{
+    asm volatile("lock; xaddl %0, %1"
+      : "+r" (value), "+m" (*variable) // input + output
+      : // No input-only
+      : "memory"
+    );
+    return value;
+}
+
+void lock(struct lock_t *lock) {
+  int myturn = fetch_and_add(&lock->ticket, 1);
+  while (lock->turn != myturn)
+    ;
+}
+
+void unlock(struct lock_t *lock) {
+  ++lock->turn;
 }

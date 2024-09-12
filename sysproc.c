@@ -15,6 +15,7 @@ sys_fork(void)
   return fork();
 }
 
+
 int
 sys_exit(void)
 {
@@ -90,4 +91,30 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+int
+sys_clone(void)
+{
+  int fn, arg1, arg2;
+  char *stack;
+  if (argint(0, &fn) < 0 || argint(1, &arg1) < 0 || argint(2, &arg2) < 0) {
+    return -1;
+  } else if (argptr(3, &stack, PGSIZE) < 0) {
+    return -2;
+  } else if ((uint) stack % PGSIZE != 0) {
+    return -3;
+  }
+
+  return clone((void(*)(void*, void *)) fn, (void *) arg1, (void *) arg2, stack);
+}
+
+int
+sys_join(void)
+{
+  int stack;
+  if (argint(0, &stack) < 0) {
+    return -1;
+  }
+  return join((void **) stack);
 }

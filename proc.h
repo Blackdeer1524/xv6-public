@@ -42,6 +42,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct spinlock lock;        // see growproc() procedure
 };
 
 struct ptable_t {
@@ -56,6 +57,8 @@ extern struct ptable_t ptable;
 int          cpuid(void);
 void         exit(void);
 int          fork(void);
+int          clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack);
+int          join(void **stack);
 int          growproc(int);
 int          kill(int);
 struct cpu*  mycpu(void);

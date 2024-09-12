@@ -15,7 +15,12 @@
 #include "pstat.h"
 #include "assert.h"
 
-#define DEFAULT_TICKETS 4;
+int IS_CHILD_THREAD(struct proc *child, struct proc *parent) {
+  ASSERT(parent != 0, "parent is null!");
+  return child->pgdir == parent->pgdir;
+}
+
+#define DEFAULT_TICKETS 4
 
 struct ptable_t ptable;
 
@@ -119,6 +124,7 @@ found:
     return 0;
   }
   release(&ptable.lock);
+  initlock(&p->lock, "");
 
   sp = p->kstack + KSTACKSIZE;
 
@@ -185,15 +191,26 @@ growproc(int n)
   uint sz;
   struct proc *curproc = myproc();
 
+  acquire(&curproc->lock);
+  if (curproc->pid == 0) {
+    // see exit() syscall
+    release(&curproc->lock);
+    return 0;
+  }
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0) {
+      release(&curproc->lock);
       return -1;
+    }
   } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0) {
+      release(&curproc->lock);
       return -1;
+    }
   }
   curproc->sz = sz;
+  release(&curproc->lock);
   switchuvm(curproc);
   return 0;
 }
@@ -255,6 +272,104 @@ fork(void)
   return child_pid;
 }
 
+int 
+clone(void(*fcn)(void*, void *), void *arg1, void *arg2, void *stack)
+{
+  int i, child_pid;
+  struct proc *np;
+  struct proc *curproc = myproc();
+
+  // Allocate process.
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+
+  uint sp = (uint) stack + PGSIZE;
+  sp -= 3 * 4;
+
+  *(uint*)sp = 0xffffffff;
+  *(uint*)(sp + 4) = (uint) arg1;
+  *(uint*)(sp + 8) = (uint) arg2;
+
+  np->pgdir = curproc->pgdir;
+  np->sz = curproc->sz;
+  np->parent = curproc;
+  *np->tf = *curproc->tf;
+  np->tf->ebp = (uint) stack + PGSIZE;
+  np->tf->esp = sp;  
+  np->tf->eip = (uint) fcn;
+
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = curproc->ofile[i];
+  np->cwd = curproc->cwd;
+
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+  child_pid = np->pid;
+
+  acquire(&ptable.lock);
+
+  np->state = RUNNABLE;
+
+  const int parent_tickets = ptable.pstats.tickets[curproc - ptable.proc];
+  ptable.ticket_count += parent_tickets - ptable.pstats.tickets[np - ptable.proc];
+  ptable.pstats.tickets[np - ptable.proc] = parent_tickets;
+
+  release(&ptable.lock);
+
+  return child_pid;
+}
+
+int
+join(void **stack) 
+{
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for exited children threads.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc)
+        continue;
+      if (IS_CHILD_THREAD(p, curproc)) {
+        havekids = 1;
+        if (p->state == ZOMBIE) {
+          // Found one.
+          pid = p->pid;
+
+          // Assuming that stack is one page in size and is page aligned
+          *stack = (void *) PGROUNDDOWN(p->tf->esp);  
+
+          kfree(p->kstack);
+          p->kstack = 0;
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
+
+          ptable.pstats.inuse[p - ptable.proc] = 0;
+          release(&ptable.lock);
+          return pid;
+        }
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+  }
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
@@ -262,22 +377,28 @@ void
 exit(void)
 {
   struct proc *curproc = myproc(); 
-  int fd;
 
   if(curproc == initproc)
     panic("init exiting");
 
-  // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
-      fileclose(curproc->ofile[fd]);
-      curproc->ofile[fd] = 0;
+  if (!IS_CHILD_THREAD(curproc, curproc->parent)) {
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        fileclose(curproc->ofile[fd]);
+        curproc->ofile[fd] = 0;
+      }
+    }
+
+    begin_op();
+    iput(curproc->cwd); // also needed for threads
+    end_op();
+  } else {
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        curproc->ofile[fd] = 0;
+      }
     }
   }
-
-  begin_op();
-  iput(curproc->cwd);
-  end_op();
   curproc->cwd = 0;
 
   acquire(&ptable.lock);
@@ -288,9 +409,27 @@ exit(void)
   // Pass abandoned children to init.
   for(struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
-      p->parent = initproc;
-      if(p->state == ZOMBIE)
-        wakeup1(initproc);
+      if (IS_CHILD_THREAD(p, curproc)) {
+        // see how wait() syscall cleans up ZOMBIE procs
+        acquire(&p->lock);
+        if (p->state == RUNNABLE) {
+          ptable.ticket_count -= ptable.pstats.tickets[p - ptable.proc];
+        }
+        p->cwd = 0;
+        kfree(p->kstack);
+        p->kstack = 0;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        ptable.pstats.inuse[p - ptable.proc] = 0;
+        release(&p->lock);
+      } else {
+        p->parent = initproc;
+        if(p->state == ZOMBIE)
+          wakeup1(initproc);
+      }
     }
   }
 
@@ -319,22 +458,24 @@ wait(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->parent != curproc)
         continue;
-      havekids = 1;
-      if(p->state == ZOMBIE){
-        // Found one.
-        pid = p->pid;
-        kfree(p->kstack);
-        p->kstack = 0;
-        freevm(p->pgdir);
-        p->pid = 0;
-        p->parent = 0;
-        p->name[0] = 0;
-        p->killed = 0;
-        p->state = UNUSED;
+      if (!IS_CHILD_THREAD(p, curproc)) {
+        havekids = 1;
+        if (p->state == ZOMBIE) {
+          // Found one.
+          pid = p->pid;
+          kfree(p->kstack);
+          p->kstack = 0;
+          freevm(p->pgdir);
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
 
-        ptable.pstats.inuse[p - ptable.proc] = 0;
-        release(&ptable.lock);
-        return pid;
+          ptable.pstats.inuse[p - ptable.proc] = 0;
+          release(&ptable.lock);
+          return pid;
+        }
       }
     }
 
@@ -380,7 +521,6 @@ scheduler(void)
     acquire(&ptable.lock);
     /* cprintf("tcount:%d\n", ptable.ticket_count); */
     
-    ASSERT(ptable.ticket_count >= 0, "ticket count became negative: %d!\n", ptable.ticket_count)
     if (ptable.ticket_count > 0) {
       const int res = rand() % ptable.ticket_count;
       int sum = 0;
@@ -389,7 +529,6 @@ scheduler(void)
         if(p->state != RUNNABLE)
           continue;
 
-        ASSERT(ptable.pstats.tickets[i] > 0, "%d has %d tickets even though it is RUNNABLE\n", p->pid, ptable.pstats.tickets[i]);
         sum += ptable.pstats.tickets[i];
         if (sum <= res) 
           continue;
