@@ -22,6 +22,8 @@
 #include "fcntl.h"
 #include "log.h"
 #include "string.h"
+#include "vm.h"
+#include "x86.h"
 
 
 // Fetch the nth word-sized system call argument as a file descriptor
@@ -495,6 +497,51 @@ sys_getpinfo(void)
   acquire(&ptable.lock);
   memmove(stats, &ptable.pstats, sizeof(ptable.pstats));
   release(&ptable.lock);
+
+  return 0;
+}
+
+
+int
+sys_mprotect(void) 
+{
+  char *addr;
+  int len;
+
+  if (argint(1, &len) < 0 || len <= 0 
+      || argptr(0, &addr, PGSIZE * len) < 0 || (int)addr % PGSIZE != 0) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  for (int i = 0; i < len; ++i) {
+    pte_t *pte = walkpgdir(p->pgdir, addr, 0);
+    *pte &= ~PTE_W;
+  }
+
+  reload_cr3();
+
+  return 0;
+}
+
+int
+sys_munprotect(void)
+{
+  char *addr;
+  int len;
+
+  if (argint(1, &len) < 0 || len <= 0 
+      || argptr(0, &addr, PGSIZE * len) < 0 || (int)addr % PGSIZE != 0) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  for (int i = 0; i < len; ++i) {
+    pte_t *pte = walkpgdir(p->pgdir, addr, 0);
+    *pte |= PTE_W;
+  }
+
+  reload_cr3();
 
   return 0;
 }

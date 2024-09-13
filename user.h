@@ -30,6 +30,10 @@ int uptime(void);
 int getreadcount(void);
 int getpinfo(struct pstat *stats);
 int setticketscount(int tickets);
+// addr has to be page aligned, len > 0
+int mprotect(void *addr, int len);
+// addr has to be page aligned, len > 0
+int munprotect(void *addr, int len);
 
 // ulib.c
 int stat(const char*, struct stat*);
