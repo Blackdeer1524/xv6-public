@@ -3,13 +3,14 @@
 // http://developer.intel.com/design/pentium/datashts/24201606.pdf
 
 #include "types.h"
-#include "defs.h"
+#include "lapic.h"
 #include "param.h"
+#include "console.h"
 #include "memlayout.h"
 #include "mp.h"
 #include "x86.h"
-#include "mmu.h"
 #include "proc.h"
+#include "string.h"
 
 struct cpu cpus[NCPU];
 int ncpu;

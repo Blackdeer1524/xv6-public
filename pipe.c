@@ -1,23 +1,7 @@
-#include "types.h"
-#include "defs.h"
-#include "param.h"
-#include "mmu.h"
 #include "proc.h"
-#include "fs.h"
-#include "spinlock.h"
-#include "sleeplock.h"
 #include "file.h"
-
-#define PIPESIZE 512
-
-struct pipe {
-  struct spinlock lock;
-  char data[PIPESIZE];
-  uint nread;     // number of bytes read
-  uint nwrite;    // number of bytes written
-  int readopen;   // read fd is still open
-  int writeopen;  // write fd is still open
-};
+#include "pipe.h"
+#include "kalloc.h"
 
 int
 pipealloc(struct file **f0, struct file **f1)

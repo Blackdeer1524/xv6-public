@@ -1,4 +1,8 @@
+#ifndef _MP_H_
+#define _MP_H_
 // See MultiProcessor Specification Version 1.[14]
+
+#include "types.h"
 
 struct mp {             // floating pointer
   uchar signature[4];           // "_MP_"
@@ -52,5 +56,9 @@ struct mpioapic {       // I/O APIC table entry
 #define MPIOINTR  0x03  // One per bus interrupt source
 #define MPLINTR   0x04  // One per system interrupt source
 
+extern int      ismp;
+void            mpinit(void);
+
 //PAGEBREAK!
 // Blank page.
+#endif

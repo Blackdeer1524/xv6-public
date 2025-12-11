@@ -2,6 +2,7 @@
 
 #include "types.h"
 #include "defs.h"
+#include "console.h"
 #include "param.h"
 #include "x86.h"
 #include "memlayout.h"

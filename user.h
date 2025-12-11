@@ -1,5 +1,9 @@
-struct stat;
-struct rtcdate;
+#ifndef _USER_H_
+#define _USER_H_
+
+#include "pstat.h"
+#include "types.h"
+#include "stat.h"
 
 // system calls
 int fork(void);
@@ -23,6 +27,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int getreadcount(void);
+int getpinfo(struct pstat *stats);
+int setticketscount(int tickets);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -37,3 +44,5 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+
+#endif
